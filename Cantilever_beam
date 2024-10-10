@@ -1,0 +1,138 @@
+import math
+
+# Constants (Input Parameters)
+W = 230  
+b = 230
+D = 300
+d1 = 30  
+deff = D - d1  
+LL = 4
+DL = 12  
+FF = 2  
+WL = 15
+L = 1800  
+Leff=L+(deff/2) #for cantilever
+fck = 25  # Grade of concrete (N/mm²)
+fy = 415  # Grade of steel (N/mm²)
+DCR = 20  # Diameter of compression reinforcement (mm)
+DTR = 20  # Diameter of tension reinforcement (mm)
+DSR = 10  # Diameter of shear reinforcement (mm)
+
+'1. TO FIND ULTIMATE MOMENT'
+WDL = 25 * (b / 1000) * (D / 1000)  # Self-weight of the beam (kN/m)
+WTL = DL + LL + FF + WL + WDL  # Total load (kN/m)
+Wu = 1.5 * WTL  # Total factored load (kN/m)
+
+# Ultimate Moment for cantilever (Mu in kNm)
+Mu = (Wu * ((Leff/1000) ** 2)) / 2
+
+# Xu_max/d based on IS 456:2000 for different grades of steel
+if fy == 250:
+    xu_max_d = 0.53
+elif fy == 415:
+    xu_max_d = 0.48
+elif fy == 500:
+    xu_max_d = 0.46
+else:
+    xu_max_d = 0  
+
+# Limiting moment (Mu_lim in kNm)
+Mu_lim = 0.36 * xu_max_d * (1 - 0.42 * xu_max_d) * b * (deff) * 2 * fck * (10 * -6)
+print(f"Factored load (Wu): {Wu:.2f} kN/m")
+print(f"Factored moment (Mu): {Mu:.2f} kNm")
+print(f"Limiting moment (Mu_lim): {Mu_lim:.2f} kNm")
+if Mu > Mu_lim:
+    print("THE BEAM WILL BE DESIGNED AS DOUBLY REINFORCED BEAM")
+else:
+    print("THE BEAM WILL BE DESIGNED AS SINGLY REINFORCED BEAM")
+
+'2.AREA OF COMPRESSION REINFORCEMENT'
+RATIO = d1 / deff
+# Values for fsc are interpolated
+R1 = 0.1
+R2 = 0.15
+fsc1 = 353
+fsc2 = 342
+
+fsc = fsc1 - ((fsc1 - fsc2) / (R2 - R1)) * (RATIO - R1)
+Asc_req = (Mu - Mu_lim) * (10 ** 6) / (fsc * (deff - d1))
+Asc_c = math.pi / 4 * DCR ** 2
+Nc = math.ceil(Asc_req / Asc_c)  # Number of compression bars
+Asc_prov = Nc * Asc_c
+
+print(f"Provide {Nc} - {DCR}mm dia bars as Compression Reinforcement")
+
+# 4. AREA OF TENSION REINFORCEMENT
+xu_max = 0.48 * deff
+Ast1 = Mu_lim * (10 ** 6) / (0.87 * fy * (deff - 0.42 * xu_max))
+Ast2 = (Mu - Mu_lim) * (10 ** 6) / (0.87 * fy * (deff - d1))
+Ast = Ast1 + Ast2
+Ast_t = math.pi / 4 * DTR ** 2
+Nt = math.ceil(Ast / Ast_t)  # Number of tension bars
+
+print(f"Provide {Nt} - {DTR}mm dia bars as Tension Reinforcement")
+
+# 5. CHECK FOR SHEAR
+Vu = Wu * (Leff / 1000)  # Shear force at the fixed end for cantilever beam
+Tv = (Vu * 1000) / (b * deff)  
+
+Pt = ((Ast) / (b * deff)) * 100  
+
+# Tc values are based on Pt and interpolated
+Pt1 = 1.75
+Pt2 = 2
+Tc1 = 0.78
+Tc2 = 0.82
+Tc = Tc1 + ((Tc2 - Tc1) / (Pt2 - Pt1)) * (Pt - Pt1)  # Shear strength of concrete
+
+if Tv > Tc:
+    print("SHEAR REINFORCEMENT REQUIRED")
+
+Vuc = (Tc * b * deff) / 1000  # Shear carried by concrete
+Vus = Vu - Vuc  # Shear carried by steel
+Asv = (2 * (math.pi / 4) * (DSR ** 2))  # Area of shear reinforcement
+Sv1 = (0.87 * fy * Asv * deff) / (Vus * 1000)  # Spacing
+Sv2 = 0.75 * deff
+Sv3 = 300  # mm
+Sv = min(Sv1, Sv2, Sv3)
+
+print(f"Provide {DSR}mm 2-legged stirrups at {Sv}mm c/c")
+
+# 6. DEVELOPMENT LENGTH (Ld)
+Ld = (0.87 * fy * DTR) / (4 * math.sqrt(fck))  
+print(f"Development Length (Ld): {Ld} mm")
+
+# 7. DEFLECTION CHECK FOR CANTILEVER BEAM
+I = (b * D ** 3) / 12
+
+# Deflection formula for cantilever with UDL: delta = (W * L^4) / (8 * E * I)
+deflection_short_term = (5 * Wu * (L / 1000) * 4) / (384 * 25000 * (b / 1000) * (deff / 1000) * 3)
+print(f"Short-term Deflection: {deflection_short_term:.3f} mm")
+
+# Long-term deflection (assumed 50% more than short-term due to creep)
+deflection_long_term = deflection_short_term * 1.5
+print(f"Long-term Deflection: {deflection_long_term:.3f} mm")
+
+# 8. CRACK WIDTH ESTIMATION
+def calculate_crack_width(f_s, s, E_s, beta=1.2, k=0.8):
+
+    return (k * s * f_s / E_s) * beta
+
+# Constants for crack width calculations
+E_s = 2e5
+s = 150
+beta = 1.2  
+k = 0.8  
+
+# Stress in steel at fixed end (N/mm²) for cantilever
+f_s_fixed_end = (Mu_lim * 1e6) / (0.87 * fy * (deff - 0.42 * (0.48 * deff)))  
+f_s_concentrated_load = (Mu * 1e6) / (0.87 * fy * (deff - d1))  
+
+# Crack width at fixed end
+crack_width_fixed_end = calculate_crack_width(f_s_fixed_end, s, E_s, beta, k)
+print(f"Crack Width at Fixed End: {crack_width_fixed_end:.3f} mm")
+
+# Crack width near concentrated load
+crack_width_concentrated_load = calculate_crack_width(f_s_concentrated_load, s, E_s, beta, k)
+print(f"Crack Width Near Concentrated Load: {crack_width_concentrated_load:.3f} mm")
+
